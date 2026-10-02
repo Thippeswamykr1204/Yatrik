@@ -1,0 +1,15 @@
+.git
+.github
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/.env
+**/.env.*
+**/*.log
+**/logs
+**/*.tsbuildinfo
+**/.DS_Store
+__agent__
+**/test-results
+**/playwright-report

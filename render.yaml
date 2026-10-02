@@ -1,0 +1,76 @@
+# Backend services for Render. Use managed MongoDB and Redis with TLS.
+# Set every sync:false variable in the Render dashboard before deploying.
+services:
+  - type: web
+    name: yatrik-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci --include=dev && npm run build && npm prune --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: '22'
+      - key: HOST
+        value: 0.0.0.0
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: FRONTEND_URLS
+        sync: false
+      - key: FRONTEND_URL_PROD
+        sync: false
+      - key: COOKIE_SAME_SITE
+        value: none
+      - key: COOKIE_SECURE
+        value: 'true'
+      - key: COOKIE_DOMAIN
+        value: ''
+      - key: TRUST_PROXY
+        value: '1'
+      - key: SENTRY_DSN
+        sync: false
+  - type: worker
+    name: yatrik-generation-worker
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci --include=dev && npm run build && npm prune --omit=dev
+    startCommand: npm run start:worker
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: '22'
+      - key: HOST
+        value: 0.0.0.0
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: FRONTEND_URLS
+        sync: false
+      - key: FRONTEND_URL_PROD
+        sync: false
+      - key: COOKIE_SAME_SITE
+        value: none
+      - key: COOKIE_SECURE
+        value: 'true'
+      - key: COOKIE_DOMAIN
+        value: ''
+      - key: SENTRY_DSN
+        sync: false

@@ -1,0 +1,117 @@
+# Supply required credentials in your shell or an explicit --env-file; never commit them.
+# Local: APP_ENV=development. Production: APP_ENV=production with HTTPS origins/TLS ingress.
+x-backend-environment: &backend-environment
+  NODE_ENV: ${APP_ENV:-development}
+  HOST: 0.0.0.0
+  PORT: 5000
+  MONGODB_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME:-yatrik}:${MONGO_INITDB_ROOT_PASSWORD:?Set a URL-safe Mongo password}@mongo:27017/yatrik?authSource=admin
+  REDIS_URL: redis://:${REDIS_PASSWORD:?Set a URL-safe Redis password}@redis:6379
+  JWT_SECRET: ${JWT_SECRET:?Set an independent random JWT secret of at least 32 characters}
+  JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set an independent random refresh secret of at least 32 characters}
+  JWT_EXPIRY: ${JWT_EXPIRY:-15m}
+  JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY:-7d}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:?Set your Gemini API key}
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+  FRONTEND_URLS: ${FRONTEND_URLS:-http://localhost:3000}
+  FRONTEND_URL_PROD: ${FRONTEND_URL_PROD:-}
+  COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-lax}
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
+  COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+  TRUST_PROXY: ${TRUST_PROXY:-0}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+  RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
+  AUTH_RATE_LIMIT_WINDOW_MS: ${AUTH_RATE_LIMIT_WINDOW_MS:-900000}
+  AUTH_RATE_LIMIT_MAX_REQUESTS: ${AUTH_RATE_LIMIT_MAX_REQUESTS:-10}
+  AI_RATE_LIMIT_MAX_REQUESTS: ${AI_RATE_LIMIT_MAX_REQUESTS:-5}
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-yatrik}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:?Set a URL-safe Mongo password}
+      MONGO_INITDB_DATABASE: yatrik
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: [CMD-SHELL, 'mongosh --quiet --eval ''quit(db.getSiblingDB("admin").auth(process.env.MONGO_INITDB_ROOT_USERNAME, process.env.MONGO_INITDB_ROOT_PASSWORD) ? 0 : 1)''']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set a URL-safe Redis password}
+    command: [sh, -c, 'exec redis-server --appendonly yes --maxmemory-policy noeviction --requirepass "$$REDIS_PASSWORD"']
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: api
+    restart: unless-stopped
+    init: true
+    environment: *backend-environment
+    ports:
+      - '${API_BIND_ADDRESS:-127.0.0.1}:5000:5000'
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: worker
+    restart: unless-stopped
+    init: true
+    environment: *backend-environment
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    stop_grace_period: 2m
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # Blank public URL uses the same-origin /api rewrite (no third-party cookies).
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:5000}
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+    restart: unless-stopped
+    init: true
+    ports:
+      - '${WEB_BIND_ADDRESS:-127.0.0.1}:3000:3000'
+    depends_on:
+      api: { condition: service_healthy }
+      worker: { condition: service_healthy }
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+volumes:
+  mongo-data:
+  redis-data:
