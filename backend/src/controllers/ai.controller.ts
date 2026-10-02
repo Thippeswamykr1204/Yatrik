@@ -1,61 +1,23 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from "express";
 import {
-  generateItinerary,
   regenerateDay,
   optimizeBudget,
   chatWithAssistant,
   generatePackingList,
-} from '@/services/ai.service.js';
-import { getTripById, updateTrip } from '@/services/trips.service.js';
+} from "@/services/ai.service.js";
+import { getTripById, updateTrip } from "@/services/trips.service.js";
 import {
   validateRegenerateDay,
   validateOptimizeBudget,
   validateChat,
-} from '@/validators/ai.validators.js';
-import { sendSuccess } from '@/utils/apiResponse.js';
-import { ValidationError, NotFoundError } from '@/utils/errors.js';
-import logger from '@/utils/logger.js';
+} from "@/validators/ai.validators.js";
+import { sendSuccess } from "@/utils/apiResponse.js";
+import { ValidationError } from "@/utils/errors.js";
 
 /**
  * Generate full AI itinerary for a trip
  * POST /api/ai/generate/:tripId
  */
-export const generateTripItinerary = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    if (!req.user?.id) throw new Error('User not authenticated');
-
-    const { tripId } = req.params;
-
-    // Get trip (validates ownership)
-    const trip = await getTripById(req.user.id, tripId);
-
-    // Generate AI itinerary
-    const aiResult = await generateItinerary({
-      destination: trip.destination,
-      durationDays: trip.durationDays,
-      budgetTier: trip.budgetTier,
-      interests: trip.interests,
-    });
-
-    // Save generated data to trip
-    const updatedTrip = await updateTrip(req.user.id, tripId, {
-      itinerary: aiResult.itinerary,
-      hotels: aiResult.hotels,
-      estimatedBudget: aiResult.estimatedBudget,
-      packingList: aiResult.packingList,
-      status: 'completed',
-    });
-
-    sendSuccess(res, updatedTrip, 'Itinerary generated successfully', 200);
-  } catch (error) {
-    next(error);
-  }
-};
-
 /**
  * Regenerate a specific day
  * POST /api/ai/regenerate-day
@@ -64,18 +26,18 @@ export const generateTripItinerary = async (
 export const regenerateTripDay = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
-    if (!req.user?.id) throw new Error('User not authenticated');
+    if (!req.user?.id) throw new Error("User not authenticated");
 
     const validation = validateRegenerateDay(req.body);
     if (!validation.success) {
       const errors = validation.error.errors.reduce(
         (acc, err) => ({ ...acc, [err.path[0]]: err.message }),
-        {}
+        {},
       );
-      throw new ValidationError('Validation failed', errors);
+      throw new ValidationError("Validation failed", errors);
     }
 
     const { tripId, dayNumber, feedback } = validation.data;
@@ -93,15 +55,37 @@ export const regenerateTripDay = async (
     const newDay = await regenerateDay(trip, dayNumber, feedback);
 
     // Update the itinerary with the new day
-    const updatedItinerary = trip.itinerary.map((day) =>
-      day.dayNumber === dayNumber ? { ...day, activities: newDay.activities } : day
-    );
+    // Mongoose subdocuments are not plain objects: spreading a day loses its
+    // actual fields. Serialize explicitly and preserve every untouched activity.
+    const updatedItinerary = trip.itinerary.map((day) => ({
+      dayNumber: day.dayNumber,
+      activities:
+        day.dayNumber === dayNumber
+          ? newDay.activities.map((activity) => ({
+              ...activity,
+              completed: false,
+            }))
+          : day.activities.map((activity) => ({
+              _id: activity._id?.toString(),
+              title: activity.title,
+              description: activity.description,
+              estimatedCostINR: activity.estimatedCostINR,
+              timeOfDay: activity.timeOfDay,
+              location: activity.location,
+              completed: activity.completed,
+            })),
+    }));
 
     const updatedTrip = await updateTrip(req.user.id, tripId, {
-      itinerary: updatedItinerary as any,
+      itinerary: updatedItinerary,
     });
 
-    sendSuccess(res, updatedTrip, `Day ${dayNumber} regenerated successfully`, 200);
+    sendSuccess(
+      res,
+      updatedTrip,
+      `Day ${dayNumber} regenerated successfully`,
+      200,
+    );
   } catch (error) {
     next(error);
   }
@@ -110,34 +94,34 @@ export const regenerateTripDay = async (
 /**
  * Optimize trip budget
  * POST /api/ai/optimize-budget
- * Body: { tripId, targetBudgetUSD }
+ * Body: { tripId, targetBudgetINR }
  */
 export const optimizeTripBudget = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
-    if (!req.user?.id) throw new Error('User not authenticated');
+    if (!req.user?.id) throw new Error("User not authenticated");
 
     const validation = validateOptimizeBudget(req.body);
     if (!validation.success) {
       const errors = validation.error.errors.reduce(
         (acc, err) => ({ ...acc, [err.path[0]]: err.message }),
-        {}
+        {},
       );
-      throw new ValidationError('Validation failed', errors);
+      throw new ValidationError("Validation failed", errors);
     }
 
-    const { tripId, targetBudgetUSD } = validation.data;
+    const { tripId, targetBudgetINR } = validation.data;
 
     // Get trip (validates ownership)
     const trip = await getTripById(req.user.id, tripId);
 
     // Optimize budget using AI
-    const optimization = await optimizeBudget(trip, targetBudgetUSD);
+    const optimization = await optimizeBudget(trip, targetBudgetINR);
 
-    sendSuccess(res, optimization, 'Budget optimized successfully', 200);
+    sendSuccess(res, optimization, "Budget optimized successfully", 200);
   } catch (error) {
     next(error);
   }
@@ -151,18 +135,18 @@ export const optimizeTripBudget = async (
 export const chatWithTripAssistant = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
-    if (!req.user?.id) throw new Error('User not authenticated');
+    if (!req.user?.id) throw new Error("User not authenticated");
 
     const validation = validateChat(req.body);
     if (!validation.success) {
       const errors = validation.error.errors.reduce(
         (acc, err) => ({ ...acc, [err.path[0]]: err.message }),
-        {}
+        {},
       );
-      throw new ValidationError('Validation failed', errors);
+      throw new ValidationError("Validation failed", errors);
     }
 
     const { tripId, message, history } = validation.data;
@@ -175,9 +159,9 @@ export const chatWithTripAssistant = async (
 
     sendSuccess(
       res,
-      { message: reply, role: 'model' },
-      'Response generated successfully',
-      200
+      { message: reply, role: "model" },
+      "Response generated successfully",
+      200,
     );
   } catch (error) {
     next(error);
@@ -191,10 +175,10 @@ export const chatWithTripAssistant = async (
 export const generateTripPackingList = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
-    if (!req.user?.id) throw new Error('User not authenticated');
+    if (!req.user?.id) throw new Error("User not authenticated");
 
     const { tripId } = req.params;
 
@@ -206,10 +190,10 @@ export const generateTripPackingList = async (
 
     // Save to trip
     const updatedTrip = await updateTrip(req.user.id, tripId, {
-      packingList: packingList as any,
+      packingList,
     });
 
-    sendSuccess(res, updatedTrip, 'Packing list generated successfully', 200);
+    sendSuccess(res, updatedTrip, "Packing list generated successfully", 200);
   } catch (error) {
     next(error);
   }

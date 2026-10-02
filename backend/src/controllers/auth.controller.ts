@@ -1,19 +1,29 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from "express";
 import {
   registerUser,
   loginUser,
   refreshAccessToken,
   getUserById,
   logoutUser,
-} from '@/services/auth.service.js';
+} from "@/services/auth.service.js";
 import {
   validateRegister,
   validateLogin,
   validateRefreshToken,
-} from '@/validators/auth.validators.js';
-import { sendSuccess, sendError } from '@/utils/apiResponse.js';
-import { ValidationError } from '@/utils/errors.js';
-import logger from '@/utils/logger.js';
+} from "@/validators/auth.validators.js";
+import { sendSuccess } from "@/utils/apiResponse.js";
+import { ValidationError, UnauthorizedError } from "@/utils/errors.js";
+import { config } from "@/config/env.js";
+
+// Cross-site deployments must explicitly opt into SameSite=None over HTTPS.
+const refreshCookieOptions = {
+  httpOnly: true,
+  secure: config.cookie.secure,
+  sameSite: config.cookie.sameSite,
+  ...(config.cookie.domain ? { domain: config.cookie.domain } : {}),
+  maxAge: config.jwt.refreshMaxAge,
+  path: "/",
+};
 
 /**
  * Register endpoint handler
@@ -22,7 +32,7 @@ import logger from '@/utils/logger.js';
 export const register = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     // Validate input
@@ -33,24 +43,23 @@ export const register = async (
           ...acc,
           [err.path[0]]: err.message,
         }),
-        {}
+        {},
       );
-      throw new ValidationError('Validation failed', errors);
+      throw new ValidationError("Validation failed", errors);
     }
 
     // Register user
     const result = await registerUser(validation.data);
 
     // Set refresh token in HttpOnly cookie
-    res.cookie('refreshToken', result.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/',
-    });
+    res.cookie("refreshToken", result.refreshToken, refreshCookieOptions);
 
-    sendSuccess(res, result, 'User registered successfully', 201);
+    sendSuccess(
+      res,
+      { user: result.user, accessToken: result.accessToken },
+      "User registered successfully",
+      201,
+    );
   } catch (error) {
     next(error);
   }
@@ -63,7 +72,7 @@ export const register = async (
 export const login = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     // Validate input
@@ -74,24 +83,23 @@ export const login = async (
           ...acc,
           [err.path[0]]: err.message,
         }),
-        {}
+        {},
       );
-      throw new ValidationError('Validation failed', errors);
+      throw new ValidationError("Validation failed", errors);
     }
 
     // Login user
     const result = await loginUser(validation.data);
 
     // Set refresh token in HttpOnly cookie
-    res.cookie('refreshToken', result.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/',
-    });
+    res.cookie("refreshToken", result.refreshToken, refreshCookieOptions);
 
-    sendSuccess(res, result, 'Login successful', 200);
+    sendSuccess(
+      res,
+      { user: result.user, accessToken: result.accessToken },
+      "Login successful",
+      200,
+    );
   } catch (error) {
     next(error);
   }
@@ -104,37 +112,34 @@ export const login = async (
 export const refresh = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
-    // Get refresh token from cookie or body
-    const refreshTokenFromBody = req.body.refreshToken;
-    const refreshTokenFromCookie = req.cookies?.refreshToken;
-    const refreshToken = refreshTokenFromBody || refreshTokenFromCookie;
+    // Refresh tokens are only accepted from the HttpOnly cookie.
+    const refreshToken = req.cookies?.refreshToken;
 
     if (!refreshToken) {
-      throw new ValidationError('Refresh token is required');
+      throw new UnauthorizedError("Refresh token is required");
     }
 
     // Validate input
     const validation = validateRefreshToken({ refreshToken });
     if (!validation.success) {
-      throw new ValidationError('Invalid refresh token');
+      throw new ValidationError("Invalid refresh token");
     }
 
     // Refresh access token
     const tokens = await refreshAccessToken(refreshToken);
 
     // Update refresh token in cookie
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/',
-    });
+    res.cookie("refreshToken", tokens.refreshToken, refreshCookieOptions);
 
-    sendSuccess(res, tokens, 'Token refreshed successfully', 200);
+    sendSuccess(
+      res,
+      { accessToken: tokens.accessToken },
+      "Token refreshed successfully",
+      200,
+    );
   } catch (error) {
     next(error);
   }
@@ -147,15 +152,15 @@ export const refresh = async (
 export const getCurrentUser = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user?.id) {
-      throw new Error('User not found in request');
+      throw new Error("User not found in request");
     }
 
     const user = await getUserById(req.user.id);
-    sendSuccess(res, user, 'User fetched successfully', 200);
+    sendSuccess(res, user, "User fetched successfully", 200);
   } catch (error) {
     next(error);
   }
@@ -168,25 +173,21 @@ export const getCurrentUser = async (
 export const logout = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user?.id) {
-      throw new Error('User not found in request');
+      throw new Error("User not found in request");
     }
 
     // Invalidate refresh token in database
     await logoutUser(req.user.id);
 
     // Clear refresh token cookie
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
-    });
+    const { maxAge: _maxAge, ...clearOptions } = refreshCookieOptions;
+    res.clearCookie("refreshToken", clearOptions);
 
-    sendSuccess(res, null, 'Logout successful', 200);
+    sendSuccess(res, null, "Logout successful", 200);
   } catch (error) {
     next(error);
   }

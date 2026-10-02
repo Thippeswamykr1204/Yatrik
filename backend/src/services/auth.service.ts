@@ -1,16 +1,17 @@
-import { User, type IUser } from '@/models/User.js';
+import { User } from "@/models/User.js";
 import {
   generateTokens,
   verifyRefreshToken,
+  hashRefreshToken,
   type TokenPayload,
-} from '@/utils/tokens.js';
+} from "@/utils/tokens.js";
 import {
   UnauthorizedError,
   ConflictError,
   DatabaseError,
   ValidationError,
-} from '@/utils/errors.js';
-import logger from '@/utils/logger.js';
+} from "@/utils/errors.js";
+import logger from "@/utils/logger.js";
 
 interface RegisterInput {
   name: string;
@@ -39,13 +40,13 @@ interface AuthResponse {
  * Register a new user
  */
 export const registerUser = async (
-  input: RegisterInput
+  input: RegisterInput,
 ): Promise<AuthResponse> => {
   try {
     // Check if user already exists
     const existingUser = await User.findOne({ email: input.email });
     if (existingUser) {
-      throw new ConflictError('Email already registered');
+      throw new ConflictError("Email already registered");
     }
 
     // Create new user
@@ -68,10 +69,10 @@ export const registerUser = async (
     const { accessToken, refreshToken } = generateTokens(tokenPayload);
 
     // Save refresh token to database
-    user.refreshToken = refreshToken;
+    user.refreshToken = hashRefreshToken(refreshToken);
     await user.save();
 
-    logger.info(`User registered: ${user.email}`);
+    logger.info("User registered");
 
     return {
       user: {
@@ -86,8 +87,16 @@ export const registerUser = async (
     if (error instanceof ConflictError || error instanceof ValidationError) {
       throw error;
     }
-    logger.error('Error registering user:', error);
-    throw new DatabaseError('Failed to register user');
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === 11000
+    ) {
+      throw new ConflictError("Email already registered");
+    }
+    logger.error("Error registering user", { error });
+    throw new DatabaseError("Failed to register user");
   }
 };
 
@@ -97,18 +106,16 @@ export const registerUser = async (
 export const loginUser = async (input: LoginInput): Promise<AuthResponse> => {
   try {
     // Find user by email
-    const user = await User.findOne({ email: input.email }).select(
-      '+password'
-    );
+    const user = await User.findOne({ email: input.email }).select("+password");
 
     if (!user) {
-      throw new UnauthorizedError('Invalid email or password');
+      throw new UnauthorizedError("Invalid email or password");
     }
 
     // Compare passwords
     const isPasswordValid = await user.comparePassword(input.password);
     if (!isPasswordValid) {
-      throw new UnauthorizedError('Invalid email or password');
+      throw new UnauthorizedError("Invalid email or password");
     }
 
     // Generate new tokens
@@ -121,10 +128,10 @@ export const loginUser = async (input: LoginInput): Promise<AuthResponse> => {
     const { accessToken, refreshToken } = generateTokens(tokenPayload);
 
     // Save new refresh token to database
-    user.refreshToken = refreshToken;
+    user.refreshToken = hashRefreshToken(refreshToken);
     await user.save();
 
-    logger.info(`User logged in: ${user.email}`);
+    logger.info("User logged in");
 
     return {
       user: {
@@ -139,8 +146,8 @@ export const loginUser = async (input: LoginInput): Promise<AuthResponse> => {
     if (error instanceof UnauthorizedError) {
       throw error;
     }
-    logger.error('Error logging in user:', error);
-    throw new DatabaseError('Failed to login');
+    logger.error("Error logging in user", { error });
+    throw new DatabaseError("Failed to login");
   }
 };
 
@@ -148,21 +155,21 @@ export const loginUser = async (input: LoginInput): Promise<AuthResponse> => {
  * Refresh access token using refresh token
  */
 export const refreshAccessToken = async (
-  refreshToken: string
+  refreshToken: string,
 ): Promise<{ accessToken: string; refreshToken: string }> => {
   try {
     // Verify refresh token
     const decoded = verifyRefreshToken(refreshToken);
 
     // Find user
-    const user = await User.findById(decoded.id).select('+refreshToken');
+    const user = await User.findById(decoded.id).select("+refreshToken");
     if (!user) {
-      throw new UnauthorizedError('User not found');
+      throw new UnauthorizedError("User not found");
     }
 
     // Verify refresh token matches what's stored in database
-    if (user.refreshToken !== refreshToken) {
-      throw new UnauthorizedError('Refresh token does not match');
+    if (user.refreshToken !== hashRefreshToken(refreshToken)) {
+      throw new UnauthorizedError("Refresh token does not match");
     }
 
     // Generate new tokens
@@ -174,11 +181,15 @@ export const refreshAccessToken = async (
 
     const tokens = generateTokens(tokenPayload);
 
-    // Save new refresh token to database
-    user.refreshToken = tokens.refreshToken;
-    await user.save();
+    // Compare-and-swap makes rotation single-use even across API replicas.
+    const rotated = await User.updateOne(
+      { _id: user._id, refreshToken: hashRefreshToken(refreshToken) },
+      { $set: { refreshToken: hashRefreshToken(tokens.refreshToken) } },
+    );
+    if (rotated.modifiedCount !== 1)
+      throw new UnauthorizedError("Refresh token already used");
 
-    logger.info(`Token refreshed for user: ${user.email}`);
+    logger.info("Token refreshed");
 
     return {
       accessToken: tokens.accessToken,
@@ -188,11 +199,11 @@ export const refreshAccessToken = async (
     if (error instanceof UnauthorizedError) {
       throw error;
     }
-    if (error instanceof Error && error.message.includes('token')) {
+    if (error instanceof Error && error.message.includes("token")) {
       throw new UnauthorizedError(error.message);
     }
-    logger.error('Error refreshing token:', error);
-    throw new UnauthorizedError('Failed to refresh token');
+    logger.error("Error refreshing token", { error });
+    throw new UnauthorizedError("Failed to refresh token");
   }
 };
 
@@ -203,7 +214,7 @@ export const getUserById = async (id: string): Promise<UserResponse> => {
   try {
     const user = await User.findById(id);
     if (!user) {
-      throw new UnauthorizedError('User not found');
+      throw new UnauthorizedError("User not found");
     }
     return {
       id: user._id.toString(),
@@ -214,8 +225,8 @@ export const getUserById = async (id: string): Promise<UserResponse> => {
     if (error instanceof UnauthorizedError) {
       throw error;
     }
-    logger.error('Error fetching user:', error);
-    throw new DatabaseError('Failed to fetch user');
+    logger.error("Error fetching user", { error });
+    throw new DatabaseError("Failed to fetch user");
   }
 };
 
@@ -227,19 +238,19 @@ export const logoutUser = async (userId: string): Promise<void> => {
     const user = await User.findByIdAndUpdate(
       userId,
       { refreshToken: null },
-      { new: true }
+      { new: true },
     );
 
     if (!user) {
-      throw new UnauthorizedError('User not found');
+      throw new UnauthorizedError("User not found");
     }
 
-    logger.info(`User logged out: ${user.email}`);
+    logger.info("User logged out");
   } catch (error) {
     if (error instanceof UnauthorizedError) {
       throw error;
     }
-    logger.error('Error logging out user:', error);
-    throw new DatabaseError('Failed to logout');
+    logger.error("Error logging out user", { error });
+    throw new DatabaseError("Failed to logout");
   }
 };

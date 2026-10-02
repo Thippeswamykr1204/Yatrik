@@ -1,8 +1,8 @@
 export interface AIActivity {
   title: string;
   description: string;
-  estimatedCostUSD: number;
-  timeOfDay: 'Morning' | 'Afternoon' | 'Evening';
+  estimatedCostINR: number;
+  timeOfDay: "Morning" | "Afternoon" | "Evening";
   location?: string;
 }
 
@@ -13,8 +13,8 @@ export interface AIItineraryDay {
 
 export interface AIHotel {
   name: string;
-  tier: 'Budget' | 'Mid-Range' | 'Luxury';
-  estimatedCostPerNightUSD: number;
+  tier: "Budget" | "Mid-Range" | "Luxury";
+  estimatedCostPerNightINR: number;
   rating: number;
   address?: string;
   amenities?: string[];
@@ -30,7 +30,7 @@ export interface AIBudget {
 
 export interface AIPackingItem {
   item: string;
-  category: 'Documents' | 'Clothing' | 'Gear' | 'Toiletries' | 'Other';
+  category: "Documents" | "Clothing" | "Gear" | "Toiletries" | "Other";
   isPacked: boolean;
   weatherRelevant?: boolean;
 }
@@ -45,12 +45,12 @@ export interface AIGeneratedTrip {
 export interface AIGenerateInput {
   destination: string;
   durationDays: number;
-  budgetTier: 'Low' | 'Medium' | 'High';
+  budgetTier: "Low" | "Medium" | "High";
   interests: string[];
 }
 
 export interface AIChatMessage {
-  role: 'user' | 'model';
+  role: "user" | "model";
   content: string;
 }
 

@@ -1,11 +1,11 @@
-import { Response } from 'express';
-import { ApiResponse } from '@/types/index.js';
+import { Response } from "express";
+import { ApiResponse } from "@/types/index.js";
 
 export const sendSuccess = <T>(
   res: Response,
   data: T,
-  message: string = 'Success',
-  statusCode: number = 200
+  message: string = "Success",
+  statusCode: number = 200,
 ): Response => {
   return res.status(statusCode).json({
     success: true,
@@ -20,13 +20,13 @@ export const sendError = (
   res: Response,
   message: string,
   statusCode: number = 500,
-  error?: any
+  errorCode: string = message,
 ): Response => {
   return res.status(statusCode).json({
     success: false,
     status: statusCode,
     message,
-    error: error?.message || message,
+    error: errorCode,
     timestamp: new Date().toISOString(),
   } as ApiResponse);
 };
@@ -37,7 +37,7 @@ export const sendPaginated = <T>(
   total: number,
   page: number,
   limit: number,
-  message: string = 'Success'
+  message: string = "Success",
 ): Response => {
   return res.status(200).json({
     success: true,

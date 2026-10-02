@@ -1,6 +1,6 @@
-import mongoose, { Schema, Document } from 'mongoose';
-import bcryptjs from 'bcryptjs';
-import logger from '@/utils/logger.js';
+import mongoose, { Schema, Document } from "mongoose";
+import bcryptjs from "bcryptjs";
+import logger from "@/utils/logger.js";
 
 export interface IUser extends Document {
   name: string;
@@ -16,28 +16,29 @@ const userSchema = new Schema<IUser>(
   {
     name: {
       type: String,
-      required: [true, 'Name is required'],
+      required: [true, "Name is required"],
       trim: true,
-      minlength: [2, 'Name must be at least 2 characters'],
-      maxlength: [100, 'Name must not exceed 100 characters'],
+      minlength: [2, "Name must be at least 2 characters"],
+      maxlength: [100, "Name must not exceed 100 characters"],
     },
     email: {
       type: String,
-      required: [true, 'Email is required'],
-      // unique: true,
+      required: [true, "Email is required"],
+      unique: true,
       lowercase: true,
       trim: true,
       match: [
         /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-        'Please provide a valid email address',
+        "Please provide a valid email address",
       ],
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
-      minlength: [8, 'Password must be at least 8 characters'],
+      required: [true, "Password is required"],
+      minlength: [8, "Password must be at least 8 characters"],
       select: false, // Don't return password by default
     },
+    // SHA-256 of the current refresh token; raw bearer credentials are never stored.
     refreshToken: {
       type: String,
       default: null,
@@ -46,16 +47,13 @@ const userSchema = new Schema<IUser>(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
-// Index for faster email lookups
-userSchema.index({ email: 1 });
-
 // Hash password before saving
-userSchema.pre('save', async function (next) {
+userSchema.pre("save", async function (next) {
   // Only hash if password is modified
-  if (!this.isModified('password')) {
+  if (!this.isModified("password")) {
     return next();
   }
 
@@ -64,19 +62,19 @@ userSchema.pre('save', async function (next) {
     this.password = await bcryptjs.hash(this.password, salt);
     next();
   } catch (error) {
-    logger.error('Error hashing password:', error);
+    logger.error("Error hashing password", { error });
     next(error as Error);
   }
 });
 
 // Method to compare passwords
 userSchema.methods.comparePassword = async function (
-  candidatePassword: string
+  candidatePassword: string,
 ): Promise<boolean> {
   try {
     return await bcryptjs.compare(candidatePassword, this.password);
   } catch (error) {
-    logger.error('Error comparing passwords:', error);
+    logger.error("Error comparing passwords", { error });
     throw error;
   }
 };
@@ -89,4 +87,4 @@ userSchema.methods.toJSON = function () {
   return obj;
 };
 
-export const User = mongoose.model<IUser>('User', userSchema);
+export const User = mongoose.model<IUser>("User", userSchema);

@@ -1,12 +1,11 @@
-import mongoose, { Schema, Document } from 'mongoose';
-import logger from '@/utils/logger.js';
+import mongoose, { Schema, Document } from "mongoose";
 
 export interface IActivity {
   _id?: mongoose.Types.ObjectId;
   title: string;
   description: string;
-  estimatedCostUSD: number;
-  timeOfDay: 'Morning' | 'Afternoon' | 'Evening';
+  estimatedCostINR: number;
+  timeOfDay: "Morning" | "Afternoon" | "Evening";
   location?: string;
   completed: boolean;
 }
@@ -19,8 +18,8 @@ export interface IItineraryDay {
 export interface IHotel {
   _id?: mongoose.Types.ObjectId;
   name: string;
-  tier: 'Budget' | 'Mid-Range' | 'Luxury';
-  estimatedCostPerNightUSD: number;
+  tier: "Budget" | "Mid-Range" | "Luxury";
+  estimatedCostPerNightINR: number;
   rating: number;
   address?: string;
   amenities?: string[];
@@ -37,7 +36,7 @@ export interface IBudget {
 export interface IPackingItem {
   _id?: mongoose.Types.ObjectId;
   item: string;
-  category: 'Documents' | 'Clothing' | 'Gear' | 'Toiletries' | 'Other';
+  category: "Documents" | "Clothing" | "Gear" | "Toiletries" | "Other";
   isPacked: boolean;
   weatherRelevant?: boolean;
 }
@@ -46,7 +45,7 @@ export interface ITrip extends Document {
   userId: mongoose.Types.ObjectId;
   destination: string;
   durationDays: number;
-  budgetTier: 'Low' | 'Medium' | 'High';
+  budgetTier: "Low" | "Medium" | "High";
   interests: string[];
   startDate?: Date;
   endDate?: Date;
@@ -54,7 +53,17 @@ export interface ITrip extends Document {
   hotels: IHotel[];
   estimatedBudget: IBudget;
   packingList: IPackingItem[];
-  status: 'draft' | 'completed' | 'archived';
+  status: "draft" | "completed" | "archived";
+  generationStatus: "idle" | "queued" | "generating" | "completed" | "failed";
+  generationJobId?: string;
+  generationStage?:
+    | "preparing"
+    | "generating"
+    | "validating"
+    | "saving"
+    | "completed"
+    | "failed";
+  generationError?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -63,27 +72,27 @@ const activitySchema = new Schema<IActivity>(
   {
     title: {
       type: String,
-      required: [true, 'Activity title is required'],
+      required: [true, "Activity title is required"],
       trim: true,
-      maxlength: [200, 'Activity title must not exceed 200 characters'],
+      maxlength: [200, "Activity title must not exceed 200 characters"],
     },
     description: {
       type: String,
       trim: true,
-      maxlength: [1000, 'Activity description must not exceed 1000 characters'],
+      maxlength: [1000, "Activity description must not exceed 1000 characters"],
     },
-    estimatedCostUSD: {
+    estimatedCostINR: {
       type: Number,
       default: 0,
-      min: [0, 'Cost cannot be negative'],
+      min: [0, "Cost cannot be negative"],
     },
     timeOfDay: {
       type: String,
       enum: {
-        values: ['Morning', 'Afternoon', 'Evening'],
-        message: 'timeOfDay must be Morning, Afternoon, or Evening',
+        values: ["Morning", "Afternoon", "Evening"],
+        message: "timeOfDay must be Morning, Afternoon, or Evening",
       },
-      default: 'Morning',
+      default: "Morning",
     },
     location: {
       type: String,
@@ -94,50 +103,55 @@ const activitySchema = new Schema<IActivity>(
       default: false,
     },
   },
-  { _id: true }
+  { _id: true },
 );
 
 const itineraryDaySchema = new Schema<IItineraryDay>(
   {
     dayNumber: {
       type: Number,
-      required: [true, 'Day number is required'],
-      min: [1, 'Day number must be at least 1'],
+      required: [true, "Day number is required"],
+      min: [1, "Day number must be at least 1"],
+      max: [30, "Day number cannot exceed 30"],
+      validate: {
+        validator: Number.isInteger,
+        message: "Day number must be an integer",
+      },
     },
     activities: {
       type: [activitySchema],
       default: [],
     },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const hotelSchema = new Schema<IHotel>(
   {
     name: {
       type: String,
-      required: [true, 'Hotel name is required'],
+      required: [true, "Hotel name is required"],
       trim: true,
-      maxlength: [200, 'Hotel name must not exceed 200 characters'],
+      maxlength: [200, "Hotel name must not exceed 200 characters"],
     },
     tier: {
       type: String,
       enum: {
-        values: ['Budget', 'Mid-Range', 'Luxury'],
-        message: 'tier must be Budget, Mid-Range, or Luxury',
+        values: ["Budget", "Mid-Range", "Luxury"],
+        message: "tier must be Budget, Mid-Range, or Luxury",
       },
       required: true,
     },
-    estimatedCostPerNightUSD: {
+    estimatedCostPerNightINR: {
       type: Number,
-      required: [true, 'Cost per night is required'],
-      min: [0, 'Cost cannot be negative'],
+      required: [true, "Cost per night is required"],
+      min: [0, "Cost cannot be negative"],
     },
     rating: {
       type: Number,
-      required: [true, 'Rating is required'],
-      min: [0, 'Rating cannot be less than 0'],
-      max: [5, 'Rating cannot exceed 5'],
+      required: [true, "Rating is required"],
+      min: [0, "Rating cannot be less than 0"],
+      max: [5, "Rating cannot exceed 5"],
     },
     address: {
       type: String,
@@ -148,7 +162,7 @@ const hotelSchema = new Schema<IHotel>(
       default: [],
     },
   },
-  { _id: true }
+  { _id: true },
 );
 
 const budgetSchema = new Schema<IBudget>(
@@ -156,45 +170,46 @@ const budgetSchema = new Schema<IBudget>(
     transport: {
       type: Number,
       default: 0,
-      min: [0, 'Cost cannot be negative'],
+      min: [0, "Cost cannot be negative"],
     },
     accommodation: {
       type: Number,
       default: 0,
-      min: [0, 'Cost cannot be negative'],
+      min: [0, "Cost cannot be negative"],
     },
     food: {
       type: Number,
       default: 0,
-      min: [0, 'Cost cannot be negative'],
+      min: [0, "Cost cannot be negative"],
     },
     activities: {
       type: Number,
       default: 0,
-      min: [0, 'Cost cannot be negative'],
+      min: [0, "Cost cannot be negative"],
     },
     total: {
       type: Number,
       default: 0,
-      min: [0, 'Cost cannot be negative'],
+      min: [0, "Cost cannot be negative"],
     },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const packingItemSchema = new Schema<IPackingItem>(
   {
     item: {
       type: String,
-      required: [true, 'Item name is required'],
+      required: [true, "Item name is required"],
       trim: true,
-      maxlength: [100, 'Item name must not exceed 100 characters'],
+      maxlength: [100, "Item name must not exceed 100 characters"],
     },
     category: {
       type: String,
       enum: {
-        values: ['Documents', 'Clothing', 'Gear', 'Toiletries', 'Other'],
-        message: 'category must be one of: Documents, Clothing, Gear, Toiletries, Other',
+        values: ["Documents", "Clothing", "Gear", "Toiletries", "Other"],
+        message:
+          "category must be one of: Documents, Clothing, Gear, Toiletries, Other",
       },
       required: true,
     },
@@ -207,41 +222,46 @@ const packingItemSchema = new Schema<IPackingItem>(
       default: false,
     },
   },
-  { _id: true }
+  { _id: true },
 );
 
 const tripSchema = new Schema<ITrip>(
   {
     userId: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: [true, 'User ID is required'],
+      ref: "User",
+      required: [true, "User ID is required"],
       index: true,
+      immutable: true,
     },
     destination: {
       type: String,
-      required: [true, 'Destination is required'],
+      required: [true, "Destination is required"],
       trim: true,
-      maxlength: [100, 'Destination must not exceed 100 characters'],
+      maxlength: [100, "Destination must not exceed 100 characters"],
     },
     durationDays: {
       type: Number,
-      required: [true, 'Duration in days is required'],
-      min: [1, 'Duration must be at least 1 day'],
-      max: [365, 'Duration cannot exceed 365 days'],
+      required: [true, "Duration in days is required"],
+      min: [1, "Duration must be at least 1 day"],
+      max: [30, "Duration cannot exceed 30 days"],
+      validate: {
+        validator: Number.isInteger,
+        message: "Duration must be an integer",
+      },
     },
     budgetTier: {
       type: String,
       enum: {
-        values: ['Low', 'Medium', 'High'],
-        message: 'budgetTier must be Low, Medium, or High',
+        values: ["Low", "Medium", "High"],
+        message: "budgetTier must be Low, Medium, or High",
       },
-      required: [true, 'Budget tier is required'],
+      required: [true, "Budget tier is required"],
     },
     interests: {
       type: [String],
       default: [],
-      maxlength: [20, 'Cannot have more than 20 interests'],
+      maxlength: [20, "Cannot have more than 20 interests"],
     },
     startDate: {
       type: Date,
@@ -274,15 +294,33 @@ const tripSchema = new Schema<ITrip>(
     status: {
       type: String,
       enum: {
-        values: ['draft', 'completed', 'archived'],
-        message: 'status must be draft, completed, or archived',
+        values: ["draft", "completed", "archived"],
+        message: "status must be draft, completed, or archived",
       },
-      default: 'draft',
+      default: "draft",
     },
+    generationStatus: {
+      type: String,
+      enum: ["idle", "queued", "generating", "completed", "failed"],
+      default: "idle",
+    },
+    generationJobId: { type: String, index: true, sparse: true },
+    generationStage: {
+      type: String,
+      enum: [
+        "preparing",
+        "generating",
+        "validating",
+        "saving",
+        "completed",
+        "failed",
+      ],
+    },
+    generationError: { type: String, maxlength: 500 },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Indexes for better query performance
@@ -290,12 +328,4 @@ tripSchema.index({ userId: 1, createdAt: -1 });
 tripSchema.index({ userId: 1, destination: 1 });
 tripSchema.index({ userId: 1, status: 1 });
 
-// // Ensure userId and _id cannot be updated
-// tripSchema.pre('save', function (next) {
-//   if (this.isModified('userId')) {
-//     throw new Error('Cannot modify userId');
-//   }
-//   next();
-// });
-
-export const Trip = mongoose.model<ITrip>('Trip', tripSchema);
+export const Trip = mongoose.model<ITrip>("Trip", tripSchema);

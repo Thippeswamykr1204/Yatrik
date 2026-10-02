@@ -1,4 +1,4 @@
-import 'express';
+import "express";
 
 declare global {
   namespace Express {
@@ -9,6 +9,7 @@ declare global {
         name: string;
       };
       startTime?: number;
+      id?: string;
     }
   }
 }

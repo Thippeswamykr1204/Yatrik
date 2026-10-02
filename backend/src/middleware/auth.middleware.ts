@@ -1,10 +1,7 @@
-import { Request, Response, NextFunction } from 'express';
-import {
-  verifyAccessToken,
-  extractTokenFromHeader,
-} from '@/utils/tokens.js';
-import { UnauthorizedError } from '@/utils/errors.js';
-import logger from '@/utils/logger.js';
+import { Request, Response, NextFunction } from "express";
+import { verifyAccessToken, extractTokenFromHeader } from "@/utils/tokens.js";
+import { UnauthorizedError } from "@/utils/errors.js";
+import logger from "@/utils/logger.js";
 
 /**
  * Verify JWT access token and attach user to request
@@ -12,7 +9,7 @@ import logger from '@/utils/logger.js';
 export const verifyAuth = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): void => {
   try {
     // Extract token from Authorization header
@@ -20,7 +17,7 @@ export const verifyAuth = (
 
     if (!token) {
       throw new UnauthorizedError(
-        'Authorization token is required. Use: Authorization: Bearer <token>'
+        "Authorization token is required. Use: Authorization: Bearer <token>",
       );
     }
 
@@ -40,7 +37,7 @@ export const verifyAuth = (
       return void res.status(401).json({
         success: false,
         status: 401,
-        message: 'Unauthorized',
+        message: "Unauthorized",
         error: error.message,
         timestamp: new Date().toISOString(),
       });
@@ -48,34 +45,34 @@ export const verifyAuth = (
 
     if (error instanceof Error) {
       // Handle token expiration
-      if (error.message.includes('expired')) {
+      if (error.message.includes("expired")) {
         return void res.status(401).json({
           success: false,
           status: 401,
-          message: 'Token expired',
-          error: 'Access token has expired. Please refresh your token.',
+          message: "Token expired",
+          error: "Access token has expired. Please refresh your token.",
           timestamp: new Date().toISOString(),
         });
       }
 
       // Handle invalid token
-      if (error.message.includes('Invalid')) {
+      if (error.message.includes("Invalid")) {
         return void res.status(401).json({
           success: false,
           status: 401,
-          message: 'Unauthorized',
-          error: 'Invalid access token',
+          message: "Unauthorized",
+          error: "Invalid access token",
           timestamp: new Date().toISOString(),
         });
       }
     }
 
-    logger.error('Authentication error:', error);
+    logger.error("Authentication error", { error });
     return void res.status(401).json({
       success: false,
       status: 401,
-      message: 'Unauthorized',
-      error: 'Failed to verify token',
+      message: "Unauthorized",
+      error: "Failed to verify token",
       timestamp: new Date().toISOString(),
     });
   }
@@ -87,7 +84,7 @@ export const verifyAuth = (
 export const optionalAuth = (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): void => {
   try {
     const token = extractTokenFromHeader(req.headers.authorization);

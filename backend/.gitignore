@@ -1,0 +1,2 @@
+# The parent ignores .env.*; keep only the secret-free template versioned.
+!.env.example
