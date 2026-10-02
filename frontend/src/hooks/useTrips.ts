@@ -1,114 +1,105 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { tripsService, TripsQuery } from '@/services/trips.service';
-import { Trip, TripStats } from '@/types/models';
-import { useToast } from '@/store/uiStore';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { tripsService, TripsQuery } from "@/services/trips.service";
+import { Trip } from "@/types/models";
+import { useToast } from "@/store/uiStore";
+
+const tripKeys = {
+  all: ["trips"] as const,
+  list: (query: TripsQuery) => [...tripKeys.all, "list", query] as const,
+  detail: (tripId: string) => [...tripKeys.all, "detail", tripId] as const,
+  stats: () => [...tripKeys.all, "stats"] as const,
+};
 
 export function useTrips(query: TripsQuery = {}) {
+  const queryClient = useQueryClient();
   const toast = useToast();
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [stats, setStats] = useState<TripStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const [total, setTotal] = useState(0);
-  const [pages, setPages] = useState(1);
+  const tripsQuery = useQuery({
+    queryKey: tripKeys.list(query),
+    queryFn: () => tripsService.getAll(query),
+  });
+  const statsQuery = useQuery({
+    queryKey: tripKeys.stats(),
+    queryFn: tripsService.getStats,
+  });
+  const deleteMutation = useMutation({
+    mutationFn: tripsService.delete,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tripKeys.all });
+      toast.success("Trip deleted");
+    },
+    onError: () => toast.error("Failed to delete trip"),
+  });
 
-  const fetchTrips = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const [tripsResult, statsResult] = await Promise.all([
-        tripsService.getAll(query),
-        tripsService.getStats(),
-      ]);
-      setTrips(tripsResult.trips);
-      setTotal(tripsResult.total);
-      setPages(tripsResult.pages);
-      setStats(statsResult);
-    } catch (error) {
-      toast.error('Failed to load trips', 'Please refresh the page');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-// After deleting, also reset stats fully by refetching
-const deleteTrip = useCallback(async (tripId: string) => {
-  try {
-    setIsDeleting(tripId);
-    await tripsService.delete(tripId);
-    // Refetch everything instead of manual state update
-    await fetchTrips();
-    toast.success('Trip deleted');
-  } catch {
-    toast.error('Failed to delete trip');
-  } finally {
-    setIsDeleting(null);
-  }
-}, [fetchTrips, toast]);
-
-  useEffect(() => {
-    fetchTrips();
-  }, [fetchTrips]);
+  const refetch = async () => {
+    await Promise.all([tripsQuery.refetch(), statsQuery.refetch()]);
+  };
 
   return {
-    trips,
-    stats,
-    isLoading,
-    isDeleting,
-    total,
-    pages,
-    refetch: fetchTrips,
-    deleteTrip,
+    trips: tripsQuery.data?.trips ?? [],
+    stats: statsQuery.data ?? null,
+    isLoading: tripsQuery.isLoading || statsQuery.isLoading,
+    // Network failures must never masquerade as an empty trip library.
+    isError: tripsQuery.isError || statsQuery.isError,
+    isDeleting: deleteMutation.isPending
+      ? (deleteMutation.variables ?? null)
+      : null,
+    total: tripsQuery.data?.total ?? 0,
+    pages: tripsQuery.data?.pages ?? 1,
+    refetch,
+    deleteTrip: deleteMutation.mutateAsync,
   };
 }
 
 export function useTrip(tripId: string) {
+  const queryClient = useQueryClient();
   const toast = useToast();
-  const [trip, setTrip] = useState<Trip | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const tripQuery = useQuery({
+    queryKey: tripKeys.detail(tripId),
+    queryFn: () => tripsService.getById(tripId),
+    enabled: Boolean(tripId),
+    // Back off for long jobs, and stop polling when settled or when the tab is hidden.
+    refetchInterval: (query) => {
+      const status = query.state.data?.generationStatus;
+      if (status === "queued") return 8000;
+      if (status === "generating")
+        return query.state.dataUpdateCount < 10 ? 3000 : 8000;
+      return false;
+    },
+  });
+  const generateMutation = useMutation({
+    mutationFn: () => tripsService.generateItinerary(tripId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: tripKeys.detail(tripId),
+      });
+      await queryClient.invalidateQueries({ queryKey: tripKeys.all });
+      toast.success("Generation queued", "Your trip plan is being created");
+    },
+    onError: () => toast.error("Generation failed", "Please try again"),
+  });
 
-  const fetchTrip = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const result = await tripsService.getById(tripId);
-      setTrip(result);
-    } catch {
-      toast.error('Failed to load trip');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [tripId]);
+  const updateTrip = (updated: Trip) => {
+    queryClient.setQueryData(tripKeys.detail(tripId), updated);
+    void queryClient.invalidateQueries({ queryKey: tripKeys.all });
+  };
 
-  const generateItinerary = useCallback(async () => {
-    try {
-      setIsGenerating(true);
-      toast.info('Generating itinerary…', 'This may take 10–20 seconds');
-      const result = await tripsService.generateItinerary(tripId);
-      setTrip(result);
-      toast.success('Itinerary generated!', 'Your trip plan is ready');
-    } catch {
-      toast.error('Generation failed', 'Please try again');
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [tripId]);
-
-  const updateTrip = useCallback((updated: Trip) => {
-    setTrip(updated);
-  }, []);
-
-  useEffect(() => {
-    fetchTrip();
-  }, [fetchTrip]);
+  // The mutation only wraps the enqueue call itself (near-instant); the real "is AI
+  // still working" signal is the trip's own generationStatus, which the poll above
+  // keeps fresh.
+  const isGenerating =
+    generateMutation.isPending ||
+    tripQuery.data?.generationStatus === "queued" ||
+    tripQuery.data?.generationStatus === "generating";
 
   return {
-    trip,
-    isLoading,
+    trip: tripQuery.data ?? null,
+    isLoading: tripQuery.isLoading,
+    isError: tripQuery.isError,
     isGenerating,
-    refetch: fetchTrip,
-    generateItinerary,
+    refetch: tripQuery.refetch,
+    generateItinerary: generateMutation.mutateAsync,
     updateTrip,
   };
 }

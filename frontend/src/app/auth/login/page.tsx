@@ -1,24 +1,11 @@
-'use client';
-
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/store/authStore';
-import { LoginForm } from '@/components/auth/LoginForm';
-import { ROUTES } from '@/lib/constants';
-
+import type { Metadata } from "next";
+import { Suspense } from "react";
+import { AuthForm } from "@/components/studio/AuthForm";
+export const metadata: Metadata = { title: "Welcome back" };
 export default function LoginPage() {
-  const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuthStore();
-
-  // Redirect if already authenticated
-  useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      router.replace(ROUTES.DASHBOARD);
-    }
-  }, [isAuthenticated, isLoading, router]);
-
-  // Don't render form if already authenticated
-  if (isAuthenticated) return null;
-
-  return <LoginForm />;
+  return (
+    <Suspense fallback={<div className="skeleton h-96 w-full max-w-sm" />}>
+      <AuthForm mode="login" />
+    </Suspense>
+  );
 }

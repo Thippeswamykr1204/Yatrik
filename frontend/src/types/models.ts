@@ -9,8 +9,8 @@ export interface Activity {
   _id?: string;
   title: string;
   description: string;
-  estimatedCostUSD: number;
-  timeOfDay: 'Morning' | 'Afternoon' | 'Evening';
+  estimatedCostINR: number;
+  timeOfDay: "Morning" | "Afternoon" | "Evening";
   location?: string;
   completed: boolean;
 }
@@ -23,8 +23,8 @@ export interface ItineraryDay {
 export interface Hotel {
   _id?: string;
   name: string;
-  tier: 'Budget' | 'Mid-Range' | 'Luxury';
-  estimatedCostPerNightUSD: number;
+  tier: "Budget" | "Mid-Range" | "Luxury";
+  estimatedCostPerNightINR: number;
   rating: number;
   address?: string;
   amenities?: string[];
@@ -41,7 +41,7 @@ export interface Budget {
 export interface PackingItem {
   _id?: string;
   item: string;
-  category: 'Documents' | 'Clothing' | 'Gear' | 'Toiletries' | 'Other';
+  category: "Documents" | "Clothing" | "Gear" | "Toiletries" | "Other";
   isPacked: boolean;
   weatherRelevant?: boolean;
 }
@@ -51,7 +51,7 @@ export interface Trip {
   userId: string;
   destination: string;
   durationDays: number;
-  budgetTier: 'Low' | 'Medium' | 'High';
+  budgetTier: "Low" | "Medium" | "High";
   interests: string[];
   startDate?: string;
   endDate?: string;
@@ -59,7 +59,11 @@ export interface Trip {
   hotels: Hotel[];
   estimatedBudget: Budget;
   packingList: PackingItem[];
-  status: 'draft' | 'completed' | 'archived';
+  status: "draft" | "completed" | "archived";
+  generationStatus?: "idle" | "queued" | "generating" | "completed" | "failed";
+  generationJobId?: string;
+  generationStage?: string;
+  generationError?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -73,7 +77,7 @@ export interface TripStats {
 }
 
 export interface ChatMessage {
-  role: 'user' | 'model';
+  role: "user" | "model";
   content: string;
   timestamp?: Date;
 }

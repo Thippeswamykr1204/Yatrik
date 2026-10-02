@@ -1,62 +1,47 @@
-import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { User } from '@/types/models';
-import { TOKEN_KEY, USER_KEY } from '@/lib/constants';
+import { create } from "zustand";
+import type { User } from "@/types/models";
 
+export const SESSION_HINT = "yatrik:session";
 interface AuthState {
   user: User | null;
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  setAuth: (user: User, accessToken: string, refreshToken: string) => void;
+  setAuth: (user: User, accessToken: string) => void;
+  setAccessToken: (token: string) => void;
   clearAuth: () => void;
   setLoading: (loading: boolean) => void;
 }
-
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
+export const useAuthStore = create<AuthState>((set) => ({
+  user: null,
+  accessToken: null,
+  isAuthenticated: false,
+  isLoading: true,
+  setAuth: (user, accessToken) => {
+    try {
+      localStorage.setItem(SESSION_HINT, "1");
+    } catch {
+      /* Authentication still works without storage. */
+    }
+    set({ user, accessToken, isAuthenticated: true, isLoading: false });
+  },
+  setAccessToken: (accessToken) => set({ accessToken }),
+  clearAuth: () => {
+    try {
+      localStorage.removeItem(SESSION_HINT);
+      localStorage.removeItem("atp_access_token");
+      localStorage.removeItem("atp_refresh_token");
+      localStorage.removeItem("atp_user");
+      sessionStorage.removeItem("atp_access_token");
+    } catch {
+      /* Storage is optional. */
+    }
+    set({
       user: null,
       accessToken: null,
       isAuthenticated: false,
-      isLoading: true,
-
-      setAuth: (user, accessToken, refreshToken) => {
-        // Store access token in sessionStorage (cleared on tab close)
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem(TOKEN_KEY, accessToken);
-          localStorage.setItem('atp_refresh_token', refreshToken);
-        }
-        set({
-          user,
-          accessToken,
-          isAuthenticated: true,
-          isLoading: false,
-        });
-      },
-
-      clearAuth: () => {
-        if (typeof window !== 'undefined') {
-          sessionStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem('atp_refresh_token');
-        }
-        set({
-          user: null,
-          accessToken: null,
-          isAuthenticated: false,
-          isLoading: false,
-        });
-      },
-
-      setLoading: (loading) => set({ isLoading: loading }),
-    }),
-    {
-      name: USER_KEY,
-      storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({
-        user: state.user,
-        isAuthenticated: state.isAuthenticated,
-      }),
-    }
-  )
-);
+      isLoading: false,
+    });
+  },
+  setLoading: (isLoading) => set({ isLoading }),
+}));

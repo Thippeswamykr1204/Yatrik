@@ -1,4 +1,4 @@
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   status: number;
   message: string;
@@ -7,7 +7,7 @@ export interface ApiResponse<T = any> {
   timestamp: string;
 }
 
-export interface PaginatedResponse<T = any> {
+export interface PaginatedResponse<T = unknown> {
   success: boolean;
   status: number;
   message: string;
@@ -28,5 +28,4 @@ export interface AuthResponse {
     email: string;
   };
   accessToken: string;
-  refreshToken: string;
 }

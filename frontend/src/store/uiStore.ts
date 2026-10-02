@@ -1,6 +1,6 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 
-export type ToastType = 'success' | 'error' | 'warning' | 'info';
+export type ToastType = "success" | "error" | "warning" | "info";
 
 export interface Toast {
   id: string;
@@ -12,7 +12,7 @@ export interface Toast {
 
 interface UIState {
   toasts: Toast[];
-  addToast: (toast: Omit<Toast, 'id'>) => void;
+  addToast: (toast: Omit<Toast, "id">) => void;
   removeToast: (id: string) => void;
   clearToasts: () => void;
 }
@@ -48,12 +48,12 @@ export const useToast = () => {
 
   return {
     success: (title: string, description?: string) =>
-      addToast({ type: 'success', title, description }),
+      addToast({ type: "success", title, description }),
     error: (title: string, description?: string) =>
-      addToast({ type: 'error', title, description }),
+      addToast({ type: "error", title, description }),
     warning: (title: string, description?: string) =>
-      addToast({ type: 'warning', title, description }),
+      addToast({ type: "warning", title, description }),
     info: (title: string, description?: string) =>
-      addToast({ type: 'info', title, description }),
+      addToast({ type: "info", title, description }),
   };
 };

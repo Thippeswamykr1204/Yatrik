@@ -121,3 +121,9 @@ generated/
 # Browser-test artifacts
 **/test-results/
 **/playwright-report/
+# Environment variables (secrets)
+.env
+.env.*
+!.env.example
+!**/.env.example
+__agent__/
